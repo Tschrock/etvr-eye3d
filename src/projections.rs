@@ -1,8 +1,11 @@
-use nalgebra::{Matrix3, Rotation3, RowVector3, Translation3, Vector3};
+//! Projections and unprojections of 2d and 3d objects.
+
+use nalgebra::{Matrix3, Rotation3, RowVector3, Translation3, Vector2, Vector3};
 use roots::{find_roots_cubic_normalized, Roots};
 use thiserror::Error;
 
-use crate::geometry::{Circle3D, Ellipse2D};
+use crate::geometry::{Circle2D, Circle3D, Ellipse2D, Line2D, Sphere3D};
+use crate::Camera;
 
 #[derive(Error, Debug)]
 pub enum UnprojectionError {
@@ -12,8 +15,28 @@ pub enum UnprojectionError {
 
 /// Unprojects an ellipse from the 2d image, and returns the two possible
 /// circles in 3d space for the given radius.
-/// [Safaee-Rad, Tchoukanov, Smith, and Benhabib 1992]
-/// https://www.eecg.toronto.edu/~pagiamt/kcsmith/00163786.pdf
+/// 
+/// # Arguments
+/// 
+/// * `ellipse` - The ellipse to unproject.
+/// * `focal_length` - The focal length of the camera.
+/// * `radius` - The radius of the circle in 3d space.
+/// 
+/// # Returns
+/// 
+/// An array of two circles in 3d space.
+/// 
+/// # Errors
+/// 
+/// If the ellipse cannot be unprojected, an error is returned.
+/// 
+/// # References
+/// 
+/// * [Safaee-Rad, Tchoukanov, Smith, and Benhabib. 1992. Three-Dimensional Location Estimation of Circular Features for Machine Vision](https://www.eecg.toronto.edu/~pagiamt/kcsmith/00163786.pdf)
+/// * [Świrski and Dodgson. 2013. A Fully-Automatic, Temporal Approach to Single Camera, Glint-Free 3D Eye Model Fitting.](http://www.cl.cam.ac.uk/research/rainbow/projects/eyemodelfit/) 
+/// * https://github.com/LeszekSwirski/singleeyefitter/blob/master/lib/singleeyefitter/projection.h
+/// * https://github.com/myirci/3d_circle_estimation/blob/master/algorithm/algorithm.cpp
+/// 
 #[allow(non_snake_case)]
 pub fn unproject_ellipse(
     ellipse: &Ellipse2D,
@@ -58,24 +81,24 @@ pub fn unproject_ellipse(
     let f_prime = E / 2.0;
     let d_prime = F;
 
-    //> Section III-A-3: The Computation Procedure for Surface-Normal Estimation
+    // > Section III-A-3: The Computation Procedure for Surface-Normal Estimation
 
-    //> Step 1 - Estimation of the coefficients of the general equation of the cone
-    //> Estimate the coefficients a, b, c, f, g, h, u, v, w, and d as defined in (3)
+    // > Step 1 - Estimation of the coefficients of the general equation of the cone
+    // > Estimate the coefficients a, b, c, f, g, h, u, v, w, and d as defined in (3)
 
     // (3) The general equation of the cone
-    //>   ax² + by² + cz² + 2fyz + 2gzx + 2hxy + 2ux + 2vy + 2wz + d = 0
-    //> where
-    //>   a = γ²a'
-    //>   b = γ²b'
-    //>   c = a'α² + 2h'αβ + b'β² + 2g'α + 2f'β + d'
-    //>   d = γ²d'
-    //>   f = -γ(b'β + h'α + f')
-    //>   g = -γ(h'β + a'α + g')
-    //>   h = γ²h'
-    //>   u = γ²g'
-    //>   v = γ²f'
-    //>   w = -γ(f'β + g'α + d')
+    // >   ax² + by² + cz² + 2fyz + 2gzx + 2hxy + 2ux + 2vy + 2wz + d = 0
+    // > where
+    // >   a = γ²a'
+    // >   b = γ²b'
+    // >   c = a'α² + 2h'αβ + b'β² + 2g'α + 2f'β + d'
+    // >   d = γ²d'
+    // >   f = -γ(b'β + h'α + f')
+    // >   g = -γ(h'β + a'α + g')
+    // >   h = γ²h'
+    // >   u = γ²g'
+    // >   v = γ²f'
+    // >   w = -γ(f'β + g'α + d')
     let a = gamma * gamma * a_prime;
     let b = gamma * gamma * b_prime;
     let c = a_prime * alpha * alpha
@@ -92,12 +115,12 @@ pub fn unproject_ellipse(
     let v = gamma * gamma * f_prime;
     let w = -gamma * (f_prime * beta + g_prime * alpha + d_prime);
 
-    //> Step 2 - Reduction of the equation of the cone
-    //> Determine the coefficients λ₁, λ₂, and λ₃ in (18), by solving the
-    //> discriminating cubic equation (10), such that λ₁ and λ₂ are positive.
+    // > Step 2 - Reduction of the equation of the cone
+    // > Determine the coefficients λ₁, λ₂, and λ₃ in (18), by solving the
+    // > discriminating cubic equation (10), such that λ₁ and λ₂ are positive.
 
     // (10) Discriminating cubic equation
-    //> λ³-λ²(a+b+c)+λ(bc+ca+ab-f²-g²-h²)-(abc+2fgh-af²-bg²-ch²) = 0
+    // > λ³-λ²(a+b+c)+λ(bc+ca+ab-f²-g²-h²)-(abc+2fgh-af²-bg²-ch²) = 0
     // TODO: check performance of this
     // TODO: "such that λ₁ and λ₂ are positive." - what if they aren't?
     // Note: this function returns roots in increasing order, we'll want
@@ -116,12 +139,12 @@ pub fn unproject_ellipse(
     assert!(λ[0] >= 0.0);
     assert!(λ[1] >= 0.0);
 
-    //> Step 3 - Estimation of the coefficients of the equation of the circular-feature plane
-    //> Having estimated the coefficients of the central cone in step 2 (λᵢ in (18)),
-    //> three possible cases occur:
-    //>   1) λ₁ < λ₂, for which the solutions would be (30)
-    //>   2) λ₁ > λ₂, for which the solutions would be (31)
-    //>   3) λ₁ = λ₂, for which the solutions would be (33)
+    // > Step 3 - Estimation of the coefficients of the equation of the circular-feature plane
+    // > Having estimated the coefficients of the central cone in step 2 (λᵢ in (18)),
+    // > three possible cases occur:
+    // >   1) λ₁ < λ₂, for which the solutions would be (30)
+    // >   2) λ₁ > λ₂, for which the solutions would be (31)
+    // >   3) λ₁ = λ₂, for which the solutions would be (33)
 
     // The paper doesn't specify the order of the roots, so we'll assume it doesn't matter
     // Since they are in decending order, we only need solution 2)
@@ -131,20 +154,20 @@ pub fn unproject_ellipse(
     let m = 0.0;
     let l = ((λ[0] - λ[1]) / (λ[0] - λ[2])).sqrt(); // + and -
 
-    //> Step 4 - Estimation of the direction cosines of the surface normal with
-    //> respect to the camera frame
+    // > Step 4 - Estimation of the direction cosines of the surface normal with
+    // > respect to the camera frame
 
-    //> First, estimate the elements of the rotational transformation between
-    //> the z’y’z’ frame and the zyz frame (see (8)) by using (12)
+    // > First, estimate the elements of the rotational transformation between
+    // > the z’y’z’ frame and the zyz frame (see (8)) by using (12)
 
     // (12) Elements of the rotational transformation
-    //>   mᵢ = 1/sqrt(1+(t₁/t₂)²+t₃²)
-    //>   lᵢ = (t₁/t₂)mᵢ
-    //>   nᵢ = t₃mᵢ
-    //> where
-    //>   t₁ = (b-λᵢ)g-fh
-    //>   t₂ = (a-λᵢ)f-gh
-    //>   t₃ = -(a-λᵢ)(t₁/t₂)/g - h/g
+    // >   mᵢ = 1/sqrt(1+(t₁/t₂)²+t₃²)
+    // >   lᵢ = (t₁/t₂)mᵢ
+    // >   nᵢ = t₃mᵢ
+    // > where
+    // >   t₁ = (b-λᵢ)g-fh
+    // >   t₂ = (a-λᵢ)f-gh
+    // >   t₃ = -(a-λᵢ)(t₁/t₂)/g - h/g
     let t1 = Vector3::new(
         (b - λ[0]) * g - f * h,
         (b - λ[1]) * g - f * h,
@@ -286,7 +309,7 @@ pub fn unproject_ellipse(
         // >    are estimated using (41)
         // looking back in the paper:
         // > the coordinates of the center of the circle with respect to the X’Y’Z’ frame are
-        // ...(41)...
+        // > (41)
         // > under the condition that the sign of the coordinate Z' is selected
         // > such that the coordinate z, in the xyz frame would be positive.
         // No clue what that second part means for us, but because of math things
@@ -311,7 +334,8 @@ pub fn unproject_ellipse(
         let T0 = Translation3::new(0.0, 0.0, focal_length);
 
         // Then we can do the total transformation (35)
-        let mut center = T0 * T1 * T2 * T3 * center_prime;
+        let T = T0 * T1 * T2 * T3;
+        let mut center = T * center_prime;
 
         // > Note that we take the negative sign for Z' in order to get the
         // > positive value for z in the camera frame.
@@ -319,7 +343,7 @@ pub fn unproject_ellipse(
         // if it's negative, flip Z' and try again
         if center[2] < 0.0 {
             center_prime.neg_mut();
-            center = T0 * T1 * T2 * T3 * center_prime;
+            center = T * center_prime;
         }
 
         // Clean up the normal and make sure it faces the camera
@@ -341,6 +365,159 @@ pub fn unproject_ellipse(
     Ok(circles)
 }
 
+/// Projects a 3D point into the image plane. Assumes the camera is
+/// at `(0, 0, 0)` and the image plane is at `z = focal_length`.
+/// 
+/// # Arguments
+/// 
+/// * `point` - The 3D point to project
+/// * `focal_length` - The focal length of the camera
+/// 
+/// # Returns
+/// 
+/// * The 2D point in the image plane
+pub fn project_point_into_image_plane(
+    point: nalgebra::Vector3<f64>,
+    focal_length: f64,
+) -> nalgebra::Vector2<f64> {
+    let scale = focal_length / point[2];
+    let point_projected = scale * point;
+    point_projected.fixed_view::<2, 1>(0, 0).into_owned()
+}
+
+/// Projects a 3D line into the image plane. Assumes the camera is
+/// at `(0, 0, 0)` and the image plane is at `z = focal_length`.
+/// 
+/// # Arguments
+/// 
+/// * `origin` - The origin of the 3D line
+/// * `direction` - The direction of the 3D line
+/// * `focal_length` - The focal length of the camera
+/// 
+/// # Returns
+/// 
+/// * The 2D line in the image plane
+pub fn project_line_into_image_plane(origin: Vector3<f64>, direction: Vector3<f64>, focal_length: f64) -> Line2D {
+    // Get two points on the line
+    let p1 = origin;
+    let p2 = origin + direction;
+
+    // Project them into the image plane
+    let p1_projected: nalgebra::Vector2<f64> = project_point_into_image_plane(p1, focal_length);
+    let p2_projected: nalgebra::Vector2<f64> = project_point_into_image_plane(p2, focal_length);
+
+    // Return the line between them
+    Line2D {
+        origin: p1_projected,
+        direction: p2_projected - p1_projected,
+    }
+}
+
+/// Projects a 3D circle into the image plane. Assumes the camera is
+/// at `(0, 0, 0)` and the image plane is at `z = focal_length`. The
+/// projected ellipse is returned using image coordinates (i.e. the
+/// origin is at the top left of the image).
+/// 
+/// # Arguments
+/// 
+/// * `circle` - The 3D circle to project
+/// * `focal_length` - The focal length of the camera
+/// 
+/// # Returns
+/// 
+/// * The 2D ellipse in the image plane
+/// 
+#[allow(non_snake_case)]
+pub fn project_circle_into_image_plane(circle: &Circle3D, camera: &Camera) -> Option<Ellipse2D> {
+    let c = circle.center;
+    let n = circle.normal;
+    let r = circle.radius;
+    let f = camera.focal_length;
+
+    let cn = c.dot(&n);
+    let c2r2 = c.dot(&c) - r.powi(2);
+    let ABC_0 = cn.powi(2);
+    let ABC_1 = 2.0 * cn * c.component_mul(&n);
+    let ABC_2 = c2r2 * n.map(|v| v.powi(2));
+    let ABC = ABC_1.map(|v| ABC_0 - v) + ABC_2;
+
+    let F = 2.0 * (c2r2 * n[1] * n[2] - cn * (n[1] * c[2] + n[2] * c[1]));
+    let G = 2.0 * (c2r2 * n[2] * n[0] - cn * (n[2] * c[0] + n[0] * c[2]));
+    let H = 2.0 * (c2r2 * n[0] * n[1] - cn * (n[0] * c[1] + n[1] * c[0]));
+
+    let A = ABC[0];
+    let B = H;
+    let C = ABC[1];
+    let D = G * f;
+    let E = F * f;
+    let F = ABC[2] * f.powi(2);
+
+    let disc_ = B.powi(2) - 4.0 * A * C;
+
+    if disc_ < 0.0 {
+        let center_x = (2.0 * C * D - B * E) / disc_;
+        let center_y = (2.0 * A * E - B * D) / disc_;
+        let temp_ = 2.0 * (A * E.powi(2) + C * D.powi(2) - B * D * E + disc_ * F);
+        let minor_axis =
+            -((temp_ * (A + C - ((A - C).powi(2) + B.powi(2)).sqrt())).abs()).sqrt() / disc_;
+        let major_axis =
+            -((temp_ * (A + C + ((A - C).powi(2) + B.powi(2)).sqrt())).abs()).sqrt() / disc_;
+
+        let angle = if B == 0.0 {
+            if A < C {
+                0.0
+            } else {
+                std::f64::consts::PI / 2.0
+            }
+        } else {
+            ((C - A - ((A - C).powi(2) + B.powi(2)).sqrt()) / B).atan()
+        };
+
+        Some(Ellipse2D {
+            center: Vector2::new(
+                center_x + camera.width as f64 / 2.0,
+                center_y + camera.height as f64 / 2.0,
+            ),
+            minor_radius: 2.0 * minor_axis,
+            major_radius: 2.0 * major_axis,
+            angle: angle * 180.0 / std::f64::consts::PI + 90.0,
+        })
+    } else {
+        None
+    }
+}
+
+/// Projects a 3D sphere into the image plane. Assumes the camera is
+/// at `(0, 0, 0)` and the image plane is at `z = focal_length`. The
+/// projected circle is returned using image coordinates (i.e. the
+/// origin is at the top left corner of the image).
+/// 
+/// # Arguments
+/// 
+/// * `sphere` - The 3D sphere to project
+/// * `focal_length` - The focal length of the camera
+/// 
+/// # Returns
+/// 
+/// * The 2D circle in the image plane.
+pub fn project_sphere_into_image_plane(sphere: &Sphere3D, camera: &Camera) -> Circle2D {
+    let scale = camera.focal_length / sphere.center.z;
+
+    let mut projected_sphere_center = sphere.center.scale(scale);
+    let mut projected_radius = scale * sphere.radius;
+
+    projected_sphere_center[0] += camera.width as f64 / 2.0;
+    projected_sphere_center[1] += camera.height as f64 / 2.0;
+    projected_radius *= 2.0;
+
+    Circle2D {
+        center: projected_sphere_center
+            .fixed_view::<2, 1>(0, 0)
+            .clone_owned(),
+        radius: projected_radius,
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -359,4 +536,6 @@ mod test {
         }
         Ok(())
     }
+
+    // TODO: add projection tests
 }

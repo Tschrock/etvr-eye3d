@@ -19,6 +19,7 @@ macro_rules! test_data {
 // like float_eq because they don't do deep equals and we wouldn't be able
 // to impl their traits on nalgebra types. Guess we'll just make our own.
 // TODO: Add an option to specify the precision and comparison method.
+// TODO: move this to a separate crate (will need macros to make it work)
 pub enum FloatEqError {
     NotEqual,
     NotNear(Box<dyn Display>),
@@ -69,15 +70,16 @@ impl_via_props!({T1, T2, T3}, (T1, T2, T3): 0, 1, 2);
 impl_via_props!({T1, T2, T3, T4}, (T1, T2, T3, T4): 0, 1, 2, 3);
 impl_via_props!({T1, T2, T3, T4, T5}, (T1, T2, T3, T4, T5): 0, 1, 2, 3, 4);
 
-// Impl for vecs
-impl<T: FloatEq> FloatEq for Vec<T> {
-    fn float_eq(&self, other: &Vec<T>) -> Result<(), FloatEqError> {
-        self.len().float_eq(&other.len())?;
-        self.iter()
-            .zip(other.iter())
-            .try_for_each(|(l, r)| l.float_eq(r))
-    }
+macro_rules! impl_via_iter {
+    ($($I:ident),+) => {
+        $(impl<T: FloatEq> FloatEq for $I<T> {
+            fn float_eq(&self, other: &$I<T>) -> Result<(), FloatEqError> {
+                self.iter().zip(other.iter()).try_for_each(|(l, r)| l.float_eq(r))
+            }
+        })+
+    };
 }
+impl_via_iter!(Vec, Option);
 
 // Impl for arrays
 impl<T: FloatEq, const S: usize> FloatEq for [T; S] {
@@ -97,19 +99,6 @@ impl<T: Scalar + FloatEq, R: Dim, C: Dim, S: Storage<T, R, C>> FloatEq for Matri
             .try_for_each(|(l, r)| l.float_eq(r))
     }
 }
-
-// Impl for Option
-impl<T: FloatEq> FloatEq for Option<T> {
-    fn float_eq(&self, other: &Option<T>) -> Result<(), FloatEqError> {
-        match (self, other) {
-            (Some(l), Some(r)) => l.float_eq(r),
-            (None, None) => Ok(()),
-            _ => Err(FloatEqError::NotEqual),
-        }
-    }
-}
-
-// ^ Those could probablay all be handled by a iterator impl?
 
 // The actual assert macro
 macro_rules! assert_float_eq {
