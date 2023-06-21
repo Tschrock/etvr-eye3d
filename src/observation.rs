@@ -101,8 +101,9 @@ fn calc_aux_3d(circles: &[Circle3D; 2]) -> [Matrix3x4<f64>; 2] {
         let circle = &circles[i];
         // -Rnᵢ
         let origin = circle.center - EYE_RADIUS_DEFAULT * circle.normal;
+        let direction = circle.center.normalize();
         // I - dᵢdᵢᵀ
-        let tmp = Matrix3::identity() - circle.center * circle.center.transpose();
+        let tmp = Matrix3::identity() - direction * direction.transpose();
         aux_3d[i].fixed_view_mut::<3, 3>(0, 0).copy_from(&tmp);
         // (I - dᵢdᵢᵀ)(-Rnᵢ)
         aux_3d[i]

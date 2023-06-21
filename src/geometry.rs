@@ -9,6 +9,12 @@ pub struct Line2D {
     pub direction: Vector2<f64>,
 }
 
+impl Line2D {
+    pub fn new(origin: Vector2<f64>, direction: Vector2<f64>) -> Self {
+        Line2D { origin, direction: direction.normalize() }
+    }
+}
+
 /// An ellipse in 2D space. Used to represent the pupil on the image plane.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Deserialize)]
 pub struct Ellipse2D {

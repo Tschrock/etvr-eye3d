@@ -17,28 +17,28 @@ pub enum UnprojectionError {
 
 /// Unprojects an ellipse from the 2d image, and returns the two possible
 /// circles in 3d space for the given radius.
-/// 
+///
 /// # Arguments
-/// 
+///
 /// * `ellipse` - The ellipse to unproject.
 /// * `focal_length` - The focal length of the camera.
 /// * `radius` - The radius of the circle in 3d space.
-/// 
+///
 /// # Returns
-/// 
+///
 /// An array of two circles in 3d space.
-/// 
+///
 /// # Errors
-/// 
+///
 /// If the ellipse cannot be unprojected, an error is returned.
-/// 
+///
 /// # References
-/// 
+///
 /// * [Safaee-Rad, Tchoukanov, Smith, and Benhabib. 1992. Three-Dimensional Location Estimation of Circular Features for Machine Vision](https://www.eecg.toronto.edu/~pagiamt/kcsmith/00163786.pdf)
-/// * [Świrski and Dodgson. 2013. A Fully-Automatic, Temporal Approach to Single Camera, Glint-Free 3D Eye Model Fitting.](http://www.cl.cam.ac.uk/research/rainbow/projects/eyemodelfit/) 
+/// * [Świrski and Dodgson. 2013. A Fully-Automatic, Temporal Approach to Single Camera, Glint-Free 3D Eye Model Fitting.](http://www.cl.cam.ac.uk/research/rainbow/projects/eyemodelfit/)
 /// * https://github.com/LeszekSwirski/singleeyefitter/blob/master/lib/singleeyefitter/projection.h
 /// * https://github.com/myirci/3d_circle_estimation/blob/master/algorithm/algorithm.cpp
-/// 
+///
 #[allow(non_snake_case)]
 pub fn unproject_ellipse(
     ellipse: &Ellipse2D,
@@ -143,7 +143,6 @@ pub fn unproject_ellipse(
     if λ[0] < 0.0 || λ[1] < 0.0 {
         return Err(UnprojectionError::NegativeRoots);
     }
-
 
     // > Step 3 - Estimation of the coefficients of the equation of the circular-feature plane
     // > Having estimated the coefficients of the central cone in step 2 (λᵢ in (18)),
@@ -373,14 +372,14 @@ pub fn unproject_ellipse(
 
 /// Projects a 3D point into the image plane. Assumes the camera is
 /// at `(0, 0, 0)` and the image plane is at `z = focal_length`.
-/// 
+///
 /// # Arguments
-/// 
+///
 /// * `point` - The 3D point to project
 /// * `focal_length` - The focal length of the camera
-/// 
+///
 /// # Returns
-/// 
+///
 /// * The 2D point in the image plane
 pub fn project_point_into_image_plane(
     point: nalgebra::Vector3<f64>,
@@ -393,17 +392,21 @@ pub fn project_point_into_image_plane(
 
 /// Projects a 3D line into the image plane. Assumes the camera is
 /// at `(0, 0, 0)` and the image plane is at `z = focal_length`.
-/// 
+///
 /// # Arguments
-/// 
+///
 /// * `origin` - The origin of the 3D line
 /// * `direction` - The direction of the 3D line
 /// * `focal_length` - The focal length of the camera
-/// 
+///
 /// # Returns
-/// 
+///
 /// * The 2D line in the image plane
-pub fn project_line_into_image_plane(origin: Vector3<f64>, direction: Vector3<f64>, focal_length: f64) -> Line2D {
+pub fn project_line_into_image_plane(
+    origin: Vector3<f64>,
+    direction: Vector3<f64>,
+    focal_length: f64,
+) -> Line2D {
     // Get two points on the line
     let p1 = origin;
     let p2 = origin + direction;
@@ -413,26 +416,23 @@ pub fn project_line_into_image_plane(origin: Vector3<f64>, direction: Vector3<f6
     let p2_projected: nalgebra::Vector2<f64> = project_point_into_image_plane(p2, focal_length);
 
     // Return the line between them
-    Line2D {
-        origin: p1_projected,
-        direction: p2_projected - p1_projected,
-    }
+    Line2D::new(p1_projected, p2_projected - p1_projected)
 }
 
 /// Projects a 3D circle into the image plane. Assumes the camera is
 /// at `(0, 0, 0)` and the image plane is at `z = focal_length`. The
 /// projected ellipse is returned using image coordinates (i.e. the
 /// origin is at the top left of the image).
-/// 
+///
 /// # Arguments
-/// 
+///
 /// * `circle` - The 3D circle to project
 /// * `focal_length` - The focal length of the camera
-/// 
+///
 /// # Returns
-/// 
+///
 /// * The 2D ellipse in the image plane
-/// 
+///
 #[allow(non_snake_case)]
 pub fn project_circle_into_image_plane(circle: &Circle3D, camera: &Camera) -> Option<Ellipse2D> {
     let c = circle.center;
@@ -497,14 +497,14 @@ pub fn project_circle_into_image_plane(circle: &Circle3D, camera: &Camera) -> Op
 /// at `(0, 0, 0)` and the image plane is at `z = focal_length`. The
 /// projected circle is returned using image coordinates (i.e. the
 /// origin is at the top left corner of the image).
-/// 
+///
 /// # Arguments
-/// 
+///
 /// * `sphere` - The 3D sphere to project
 /// * `focal_length` - The focal length of the camera
-/// 
+///
 /// # Returns
-/// 
+///
 /// * The 2D circle in the image plane.
 pub fn project_sphere_into_image_plane(sphere: &Sphere3D, camera: &Camera) -> Circle2D {
     let scale = camera.focal_length / sphere.center.z;
