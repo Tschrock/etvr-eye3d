@@ -1,4 +1,3 @@
-
 #[cfg(test)]
 #[macro_use]
 extern crate assert_float_eq;
@@ -23,6 +22,7 @@ use std::rc::Rc;
 
 use cache::{FixedCache, SpacialCache};
 use model::EyeModel;
+use nalgebra::Vector2;
 use observation::Observation;
 use thiserror::Error;
 
@@ -31,6 +31,13 @@ use projections::{
     project_circle_into_image_plane, project_sphere_into_image_plane, UnprojectionError,
 };
 use timer::{TimedUpdateController, UpdateController};
+
+pub struct PupilEllipse {
+    pub center: (f64, f64),
+    pub major_radius: f64,
+    pub minor_radius: f64,
+    pub angle: f64,
+}
 
 /// An error that can occur during gaze estimation.
 /// TODO: Should these be more context-specific?
@@ -63,6 +70,7 @@ impl Camera {
 }
 
 /// The result of tracking an eye.
+#[derive(Debug)]
 pub struct TrackingResult {
     /// The timestamp of the observation.
     pub timestamp: f64,
@@ -125,8 +133,14 @@ impl EyeTracker3D {
     pub fn process(
         &mut self,
         timestamp: f64,
-        mut ellipse: Ellipse2D,
+        ellipse: PupilEllipse,
     ) -> Result<TrackingResult, TrackingError> {
+        let mut ellipse = Ellipse2D {
+            center: Vector2::new(ellipse.center.0, ellipse.center.1),
+            major_radius: ellipse.major_radius,
+            minor_radius: ellipse.minor_radius,
+            angle: ellipse.angle,
+        };
         // Convert the ellipse to the camera's coordinate system (0, 0 at the center of the image).
         ellipse.center[0] -= self.camera.width as f64 / 2.0;
         ellipse.center[1] -= self.camera.height as f64 / 2.0;

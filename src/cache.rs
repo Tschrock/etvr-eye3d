@@ -98,9 +98,10 @@ impl SpacialCache {
             pixels_per_bin,
             vertical_bin_count,
             timed_storage: VecDeque::with_capacity(2 * max_bin_length),
-            binned_storage: Vec::with_capacity(
-                (horizontal_bin_count * vertical_bin_count) as usize,
-            ),
+            binned_storage: vec![
+                VecDeque::new();
+                (horizontal_bin_count * vertical_bin_count) + 1 as usize
+            ],
         }
     }
     fn get_bin_index(&self, observation: &Observation) -> usize {
@@ -117,6 +118,16 @@ impl SpacialCache {
 impl ObservationCache for SpacialCache {
     type Iter<'a> = std::collections::vec_deque::Iter<'a, Rc<Observation>>;
     fn push(&mut self, observation: Rc<Observation>) {
+
+        if observation.ellipse.center.x < -(self.pixel_width as f64) / 2.0
+            || observation.ellipse.center.x > self.pixel_width as f64 / 2.0
+            || observation.ellipse.center.y < -(self.pixel_height as f64) / 2.0
+            || observation.ellipse.center.y > self.pixel_height as f64 / 2.0
+        {
+            // println!("Observation out of bounds: {:?}", observation.ellipse.center);
+            return;
+        }
+
         // Get the bin for the observation.
         let index = self.get_bin_index(&observation);
         let storage_bin = &mut self.binned_storage[index];

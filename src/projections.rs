@@ -11,6 +11,8 @@ use crate::Camera;
 pub enum UnprojectionError {
     #[error("No real roots")]
     NoRoots,
+    #[error("Negative roots")]
+    NegativeRoots,
 }
 
 /// Unprojects an ellipse from the 2d image, and returns the two possible
@@ -135,9 +137,13 @@ pub fn unproject_ellipse(
         Roots::Three([root1, root2, root3]) => Vector3::new(root3, root2, root1),
         _ => panic!("Unexpected number of roots"),
     };
-    assert!(λ[0] >= λ[1]);
-    assert!(λ[0] >= 0.0);
-    assert!(λ[1] >= 0.0);
+    // assert!(λ[0] >= λ[1]);
+    // assert!(λ[0] >= 0.0);
+    // assert!(λ[1] >= 0.0);
+    if λ[0] < 0.0 || λ[1] < 0.0 {
+        return Err(UnprojectionError::NegativeRoots);
+    }
+
 
     // > Step 3 - Estimation of the coefficients of the equation of the circular-feature plane
     // > Having estimated the coefficients of the central cone in step 2 (λᵢ in (18)),

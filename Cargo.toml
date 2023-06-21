@@ -1,5 +1,5 @@
 [package]
-name = "etvr-eye3d"
+name = "eye3d"
 version = "0.1.0"
 edition = "2021"
 
