@@ -497,6 +497,9 @@ pub fn project_circle_into_image_plane(circle: &Circle3D, camera: &Camera) -> Op
 /// at `(0, 0, 0)` and the image plane is at `z = focal_length`. The
 /// projected circle is returned using image coordinates (i.e. the
 /// origin is at the top left corner of the image).
+/// 
+/// TODO: This isn't an accurate projection. It pretends the sphere is
+/// a circle and projects it as such.
 ///
 /// # Arguments
 ///
@@ -510,11 +513,10 @@ pub fn project_sphere_into_image_plane(sphere: &Sphere3D, camera: &Camera) -> Ci
     let scale = camera.focal_length / sphere.center.z;
 
     let mut projected_sphere_center = sphere.center.scale(scale);
-    let mut projected_radius = scale * sphere.radius;
+    let projected_radius = scale * sphere.radius;
 
     projected_sphere_center[0] += camera.width as f64 / 2.0;
     projected_sphere_center[1] += camera.height as f64 / 2.0;
-    projected_radius *= 2.0;
 
     Circle2D {
         center: projected_sphere_center
