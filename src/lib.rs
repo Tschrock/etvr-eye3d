@@ -22,21 +22,55 @@ use std::rc::Rc;
 
 use cache::{FixedCache, SpacialCache};
 use model::EyeModel;
-use nalgebra::Vector2;
 use observation::Observation;
 use thiserror::Error;
 
-use geometry::{Circle2D, Circle3D, Ellipse2D, Sphere3D};
+pub use geometry::{Circle2D, Circle3D, Ellipse2D, Sphere3D};
 use projections::{
     project_circle_into_image_plane, project_sphere_into_image_plane, UnprojectionError,
 };
 use timer::{TimedUpdateController, UpdateController};
 
+// This is basically a copy of Ellipse2D, but with clarification on the origin of the coordinate system.
+// Should probably just use Ellipse2D instead.
+/// The input to the eye tracker.
+/// All units are in pixels.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct PupilEllipse {
+    /// The center of the ellipse, in the image's coordinate system.
+    /// The origin is the top-left corner of the image, with the x-axis
+    /// pointing to the right, and the y-axis pointing down.
     pub center: (f64, f64),
+    /// The semi-major axis of the ellipse.
     pub major_radius: f64,
+    /// The semi-minor axis of the ellipse.
     pub minor_radius: f64,
+    /// The angle of rotation of the ellipse, in radians. The angle is measured
+    /// from the positive horizontal axis to the ellipse's major axis.
     pub angle: f64,
+}
+
+impl PupilEllipse {
+    /// Create a new pupil ellipse.
+    /// The x and y coordinates are in the image's coordinate system, with the origin
+    /// at the top-left corner of the image.
+    ///
+    /// # Arguments
+    ///
+    /// * `x` - The x-coordinate of the center of the ellipse.
+    /// * `y` - The y-coordinate of the center of the ellipse.
+    /// * `major_radius` - The semi-major axis of the ellipse.
+    /// * `minor_radius` - The semi-minor axis of the ellipse.
+    /// * `angle` - The angle of rotation of the ellipse, in radians.
+    ///
+    pub fn new(x: f64, y: f64, major_radius: f64, minor_radius: f64, angle: f64) -> Self {
+        PupilEllipse {
+            center: (x, y),
+            major_radius,
+            minor_radius,
+            angle,
+        }
+    }
 }
 
 /// An error that can occur during gaze estimation.
@@ -135,15 +169,16 @@ impl EyeTracker3D {
         timestamp: f64,
         ellipse: PupilEllipse,
     ) -> Result<TrackingResult, TrackingError> {
-        let mut ellipse = Ellipse2D {
-            center: Vector2::new(ellipse.center.0, ellipse.center.1),
-            major_radius: ellipse.major_radius,
-            minor_radius: ellipse.minor_radius,
-            angle: ellipse.angle,
-        };
         // Convert the ellipse to the camera's coordinate system (0, 0 at the center of the image).
-        ellipse.center[0] -= self.camera.width as f64 / 2.0;
-        ellipse.center[1] -= self.camera.height as f64 / 2.0;
+        let ellipse = Ellipse2D::new(
+            ellipse.center.0 - self.camera.width as f64 / 2.0,
+            ellipse.center.1 - self.camera.height as f64 / 2.0,
+            // I'm not sure why these changes are needed, it should already be a radius, right?
+            ellipse.major_radius / 2.0,
+            ellipse.minor_radius / 2.0,
+            // TODO: Somewhere something needs rotating, but I'm not sure where.
+            ellipse.angle, // - std::f64::consts::PI / 2.0,
+        );
 
         //----------------------------------------------------//
         // Step 1: Tell each model about the new observation. //
